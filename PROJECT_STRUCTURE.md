@@ -14,7 +14,8 @@ src/
 │   │   └── convert_h36m_annot_h5.py # 新增：HDF5 注释转训练 NPZ
 │   └── render_pose3d_views.py        # 新增：多视角 3D 骨架渲染
 ├── projects/
-│   └── single_image_pose_lift/      # 新增：本项目的 2D→3D 模型、数据与评估代码
+│   ├── single_image_pose_lift/      # 新增：本项目的 2D→3D 模型、数据与评估代码
+│   └── pose_desktop/                # 新增：方案 A 的摄像头实时桌面应用
 ├── data/
 │   ├── h36m/                        # H36M 注释与训练输入
 │   └── h36m_raw/archives/           # S1/S5/S6/S7/S8/S9/S11 原始 tar 包
@@ -36,6 +37,23 @@ src/
 | `demo_h36m_keypoints_lift.py` | 使用指定 2D 点测试 3D lifter 并可视化。 |
 | `demo_h36m_rtmpose_lift.py` | RTMDet + RTMPose + 3D lifter 的单图端到端 demo。 |
 | `README.md` | 数据格式、训练路线与限制说明。 |
+
+## `projects/pose_desktop/`
+
+方案 A 的批量图片/视频姿态推理桌面应用。它以 PySide6 构建图形界面，在后台 GPU
+线程中运行 `RTMDet → RTMPose → 第二版 TCN`，并将可选 2D 骨架、人体框和 3D 面板
+写入每次任务独立的结果目录。该应用不依赖或访问摄像头。
+
+| 路径 | 用途 |
+|---|---|
+| `main.py` | 批量推理 GUI 的程序入口与主窗口。 |
+| `config.py` | 未提交模型权重的默认路径和运行选项。 |
+| `inference/pipeline.py` | RTMDet、RTMPose、TCN 三阶段推理封装。 |
+| `inference/rendering.py` | 可选 2D 标注和 3D 面板的 OpenCV 渲染。 |
+| `workers/batch.py` | 批量媒体发现、后台 GPU 推理、视频/JSON/清单输出。 |
+| `ui/batch_panel.py` | 输入媒体、输出目录与可视化选项的 GUI。 |
+| `requirements-desktop.txt` | 桌面 GUI 的额外依赖。 |
+| `README.md` | 启动、路径覆盖和行为边界说明。 |
 
 ## `data/`
 
