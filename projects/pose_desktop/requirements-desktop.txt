@@ -1,0 +1,4 @@
+# Install these in the existing MMPose CUDA environment.
+PySide6>=6.6
+# The following are already required by the source project:
+# opencv-python, numpy, torch, mmengine, mmdet, mmpose
