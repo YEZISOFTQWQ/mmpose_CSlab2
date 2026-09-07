@@ -116,6 +116,7 @@ mmpose/.mim
 *.log.json
 *.npy
 work_dirs/
+/artifacts/
 docs/**/topics/
 docs/**/papers/*.md
 docs/**/datasets.md
