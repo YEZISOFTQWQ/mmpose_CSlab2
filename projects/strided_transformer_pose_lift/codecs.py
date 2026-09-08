@@ -116,10 +116,13 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
                encoded: np.ndarray,
                target_root: Optional[np.ndarray] = None):
         keypoints = encoded.copy()
+        if target_root is not None and target_root.size:
+            # The network predicts root-relative joints. Restore the camera
+            # coordinate frame for every non-root joint before inserting the
+            # removed root itself.
+            keypoints = keypoints + target_root
         if self.remove_root:
             root = (target_root if target_root is not None and target_root.size
                     else np.zeros((keypoints.shape[0], 3), dtype=keypoints.dtype))
             keypoints = np.insert(keypoints, self.root_index[0], root, axis=1)
-        elif target_root is not None and target_root.size:
-            keypoints = keypoints + target_root[:, None, :]
         return keypoints, np.ones(keypoints.shape[:-1], dtype=np.float32)
