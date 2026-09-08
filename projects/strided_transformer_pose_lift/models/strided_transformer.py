@@ -95,6 +95,7 @@ class StridedTransformerBackbone(BaseBackbone):
                 f'{seq_len}, got {product}')
         self.causal = False
         self.seq_len = seq_len
+        self.in_channels = in_channels
         self.embed_dim = embed_dim
         self.pose_embed = nn.Sequential(
             nn.Linear(in_channels, embed_dim), nn.BatchNorm1d(embed_dim),
@@ -125,7 +126,18 @@ class StridedTransformerBackbone(BaseBackbone):
             nn.init.trunc_normal_(position, std=.02)
 
     def forward(self, x: Tensor):
-        """Forward input ``(B, K, 2, T)`` to VTE and final STE features."""
+        """Forward 2D joints to VTE and final STE features.
+
+        MMPose's pose-lifting packer stores a sequence as flattened
+        ``(B, K*C, T)``. Accept that native representation as well as the
+        explicit ``(B, K, C, T)`` representation used in the paper.
+        """
+        if x.ndim == 3:
+            if x.shape[1] != self.in_channels:
+                raise ValueError(
+                    f'Expected {self.in_channels} flattened channels, got '
+                    f'{tuple(x.shape)}')
+            x = x.reshape(x.shape[0], -1, 2, x.shape[-1])
         if x.ndim != 4 or x.shape[-1] != self.seq_len:
             raise ValueError(
                 f'Expected (B, K, C, {self.seq_len}), got {tuple(x.shape)}')
