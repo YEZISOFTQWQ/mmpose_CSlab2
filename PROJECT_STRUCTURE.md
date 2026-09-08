@@ -49,6 +49,7 @@ Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
 |---|---|
 | `strided_transformer_h36m_rtmpose_9frm.py` | 独立训练配置；结果写入新的 `work_dirs/strided_transformer_h36m_rtmpose_9frm/`。 |
 | `codecs.py` | 9 帧 2D 归一化，以及中心帧和整段根相对 3D 标签编码。 |
+| `lazy_h36m_dataset.py` | 惰性组装时序窗口的数据集，避免 9 帧样本在启动时被整体复制到内存。 |
 | `models/strided_transformer.py` | VTE + 逐级 stride=3 的 STE 骨干网络。 |
 | `models/full_to_single_head.py` | 全序列和中心帧的双 MPJPE 损失头。 |
 | `tools/validate_temporal_inputs.py` | 训练前只读检查数据文件、形状、数值与可用窗口数。 |

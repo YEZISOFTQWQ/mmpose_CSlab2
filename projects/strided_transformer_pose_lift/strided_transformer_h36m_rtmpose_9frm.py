@@ -10,7 +10,7 @@ custom_imports = dict(
 _base_ = ['../../configs/_base_/default_runtime.py']
 
 data_root = 'data/h36m/'
-dataset_type = 'Human36mDataset'
+dataset_type = 'LazyHuman36mDataset'
 sequence_length = 9
 
 codec = dict(
@@ -71,7 +71,7 @@ val_pipeline = train_pipeline
 
 train_dataloader = dict(
     batch_size=256,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     pin_memory=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -90,7 +90,7 @@ train_dataloader = dict(
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=256,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     pin_memory=True,
     drop_last=False,

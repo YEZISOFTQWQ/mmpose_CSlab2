@@ -63,4 +63,4 @@ PYTHONPATH="$PWD" python3 tools/train.py \
   --work-dir work_dirs/strided_transformer_h36m_rtmpose_9frm
 ```
 
-首轮采用 batch size 256、4 个数据加载进程、80 epoch，在第 55、70 epoch 将学习率 `1e-3` 分别降为原来的 0.1。首个 epoch 的显存若超出 GPU 容量，只将配置中 `batch_size=256` 降到 128；模型和学习率日程保持不变。训练完成后，以 `best_MPJPE_epoch_*.pth` 作为唯一候选，与 v2 的 S9/S11 检测点测试结果比较。
+首轮采用 batch size 256、2 个数据加载进程、80 epoch，在第 55、70 epoch 将学习率 `1e-3` 分别降为原来的 0.1。`LazyHuman36mDataset` 仅保存紧凑的帧索引，并在 worker 取样时按需组装 9 帧，避免官方数据集在启动阶段复制 30 多万个完整窗口而触发 WSL OOM。首个 epoch 的显存若超出 GPU 容量，只将配置中 `batch_size=256` 降到 128；模型和学习率日程保持不变。训练完成后，以 `best_MPJPE_epoch_*.pth` 作为唯一候选，与 v2 的 S9/S11 检测点测试结果比较。
