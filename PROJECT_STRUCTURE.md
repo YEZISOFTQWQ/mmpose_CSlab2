@@ -53,6 +53,7 @@ Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
 | `models/strided_transformer.py` | VTE + 逐级 stride=3 的 STE 骨干网络。 |
 | `models/full_to_single_head.py` | 全序列和中心帧的双 MPJPE 损失头。 |
 | `tools/validate_temporal_inputs.py` | 训练前只读检查数据文件、形状、数值与可用窗口数。 |
+| `tools/benchmark_batch_size.py` | 不保存 checkpoint 的训练吞吐基准，用于选择 batch size。 |
 | `TRAINING_REVIEW.md` | 方法、参数、数据要求和待审核训练命令。 |
 
 ## `data/`
