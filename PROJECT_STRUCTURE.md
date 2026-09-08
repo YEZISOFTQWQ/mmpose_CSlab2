@@ -1,8 +1,9 @@
 # 项目文件结构
 
 本仓库以 MMPose 源码为基础；MMPose 的核心源码与官方配置没有被修改。
-本项目新增的内容集中在 `projects/single_image_pose_lift/`、`data/`、
-`work_dirs/` 与 `artifacts/`。
+本项目新增的内容集中在 `projects/single_image_pose_lift/`、
+`projects/strided_transformer_pose_lift/`、`data/`、`work_dirs/` 与
+`artifacts/`。
 
 ```text
 src/
@@ -14,7 +15,8 @@ src/
 │   │   └── convert_h36m_annot_h5.py # 新增：HDF5 注释转训练 NPZ
 │   └── render_pose3d_views.py        # 新增：多视角 3D 骨架渲染
 ├── projects/
-│   └── single_image_pose_lift/      # 新增：本项目的 2D→3D 模型、数据与评估代码
+│   ├── single_image_pose_lift/      # 新增：单图 2D→3D 模型、数据与评估代码
+│   └── strided_transformer_pose_lift/ # 新增：时序 Strided Transformer 实验
 ├── data/
 │   ├── h36m/                        # H36M 注释与训练输入
 │   └── h36m_raw/archives/           # S1/S5/S6/S7/S8/S9/S11 原始 tar 包
@@ -36,6 +38,21 @@ src/
 | `demo_h36m_keypoints_lift.py` | 使用指定 2D 点测试 3D lifter 并可视化。 |
 | `demo_h36m_rtmpose_lift.py` | RTMDet + RTMPose + 3D lifter 的单图端到端 demo。 |
 | `README.md` | 数据格式、训练路线与限制说明。 |
+
+## `projects/strided_transformer_pose_lift/`
+
+第三条、尚未开始训练的时序 2D→3D 路线。以连续 9 帧 RTMPose 17 点为输入，
+使用论文 *Exploiting Temporal Contexts with Strided Transformer for 3D
+Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
+
+| 文件 | 用途 |
+|---|---|
+| `strided_transformer_h36m_rtmpose_9frm.py` | 独立训练配置；结果写入新的 `work_dirs/strided_transformer_h36m_rtmpose_9frm/`。 |
+| `codecs.py` | 9 帧 2D 归一化，以及中心帧和整段根相对 3D 标签编码。 |
+| `models/strided_transformer.py` | VTE + 逐级 stride=3 的 STE 骨干网络。 |
+| `models/full_to_single_head.py` | 全序列和中心帧的双 MPJPE 损失头。 |
+| `tools/validate_temporal_inputs.py` | 训练前只读检查数据文件、形状、数值与可用窗口数。 |
+| `TRAINING_REVIEW.md` | 方法、参数、数据要求和待审核训练命令。 |
 
 ## `data/`
 
@@ -62,6 +79,7 @@ src/
 |---|---|---|
 | `image_pose_lift_tcn_h36m_keypoints/` | `best_MPJPE_epoch_75.pth` | 第一版：真值 2D 输入基线。 |
 | `image_pose_lift_tcn_h36m_rtmpose_v2/` | `best_MPJPE_epoch_75.pth` | 第二版：RTMPose 输入模型；部署推荐使用。 |
+| `strided_transformer_h36m_rtmpose_9frm/` | 尚未产生 | 第三版：9 帧 RTMPose 输入的 Strided Transformer；训练审核通过后才创建。 |
 
 每个目录下的日期子目录保留了 MMEngine 训练日志和 `vis_data/` 指标 JSON。
 非最佳 checkpoint 已清理。
@@ -97,7 +115,8 @@ work_dirs/image_pose_lift_tcn_h36m_rtmpose_v2/best_MPJPE_epoch_75.pth
 
 ### 可以提交
 
-- `projects/single_image_pose_lift/` 中的源代码、训练配置、评估脚本和说明文档；
+- `projects/single_image_pose_lift/`、`projects/strided_transformer_pose_lift/`
+  中的源代码、训练配置、评估脚本和说明文档；
 - `tools/` 中新增或修改的可复现数据转换、评估、渲染脚本；
 - 小型文本配置、Markdown 文档、依赖说明和 `.gitignore` 规则；
 - 不含模型参数、隐私内容或受限数据的测试代码。
