@@ -20,7 +20,7 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
 
     auxiliary_encode_keys = {
         'lifting_target', 'lifting_target_visible', 'keypoints_3d',
-        'keypoints_3d_visible'
+        'keypoints_3d_visible', 'input_occlusion_mask'
     }
     instance_mapping_table = dict(
         lifting_target='lifting_target',
@@ -38,7 +38,8 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
                  root_index: Union[int, List[int]] = 0,
                  remove_root: bool = True,
                  save_index: bool = True,
-                 concat_vis: bool = False):
+                 concat_vis: bool = False,
+                 concat_mask: bool = False):
         super().__init__()
         self.num_keypoints = num_keypoints
         self.image_size = np.asarray(image_size, dtype=np.float32)
@@ -46,6 +47,7 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
         self.remove_root = remove_root
         self.save_index = save_index
         self.concat_vis = concat_vis
+        self.concat_mask = concat_mask
 
     def _root_relative(self, target: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         root = np.mean(target[..., self.root_index, :], axis=-2,
@@ -71,7 +73,8 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
                lifting_target: Optional[np.ndarray] = None,
                lifting_target_visible: Optional[np.ndarray] = None,
                keypoints_3d: Optional[np.ndarray] = None,
-               keypoints_3d_visible: Optional[np.ndarray] = None) -> dict:
+               keypoints_3d_visible: Optional[np.ndarray] = None,
+               input_occlusion_mask: Optional[np.ndarray] = None) -> dict:
         if lifting_target is None or keypoints_3d is None:
             raise ValueError('Temporal lifting requires center and sequence 3D labels')
         if keypoints_visible is None:
@@ -85,6 +88,18 @@ class TemporalImagePoseLifting(BaseKeypointCodec):
         if self.concat_vis:
             keypoint_labels = np.concatenate(
                 [keypoint_labels, keypoints_visible[..., None]], axis=-1)
+        if self.concat_mask:
+            if input_occlusion_mask is None:
+                input_occlusion_mask = np.ones(
+                    keypoints.shape[:2], dtype=np.float32)
+            input_occlusion_mask = np.asarray(
+                input_occlusion_mask, dtype=np.float32)
+            if input_occlusion_mask.shape != keypoints.shape[:2]:
+                raise ValueError(
+                    'input_occlusion_mask must match (T, K), got '
+                    f'{input_occlusion_mask.shape} for {keypoints.shape[:2]}')
+            keypoint_labels = np.concatenate(
+                [keypoint_labels, input_occlusion_mask[..., None]], axis=-1)
         keypoint_labels = keypoint_labels.transpose(1, 2, 0).reshape(
             -1, keypoint_labels.shape[0])
 

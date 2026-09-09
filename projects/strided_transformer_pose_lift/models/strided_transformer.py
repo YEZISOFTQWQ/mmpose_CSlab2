@@ -66,7 +66,9 @@ class StridedTransformerBackbone(BaseBackbone):
     """Lift a fixed temporal window of 2D joints into temporal features.
 
     Args:
-        in_channels: Flattened 2D joint channels, normally ``17 * 2``.
+        in_channels: Flattened joint feature channels, normally ``17 * 2``.
+        keypoint_dim: Features per joint. v3 uses ``(x, y)``; the planned
+            occlusion-aware v4 uses ``(x, y, confidence, mask)``.
         seq_len: Fixed odd input window. ``9`` is used for the first H36M
             fps10 experiment; ``27`` with strides ``(3, 3, 3)`` matches the
             paper's illustrative compression pattern.
@@ -76,6 +78,7 @@ class StridedTransformerBackbone(BaseBackbone):
 
     def __init__(self,
                  in_channels=34,
+                 keypoint_dim=2,
                  seq_len=9,
                  embed_dim=256,
                  num_heads=8,
@@ -96,6 +99,11 @@ class StridedTransformerBackbone(BaseBackbone):
         self.causal = False
         self.seq_len = seq_len
         self.in_channels = in_channels
+        self.keypoint_dim = keypoint_dim
+        if in_channels % keypoint_dim:
+            raise ValueError(
+                f'in_channels={in_channels} is not divisible by '
+                f'keypoint_dim={keypoint_dim}')
         self.embed_dim = embed_dim
         self.pose_embed = nn.Sequential(
             nn.Linear(in_channels, embed_dim), nn.BatchNorm1d(embed_dim),
@@ -137,7 +145,7 @@ class StridedTransformerBackbone(BaseBackbone):
                 raise ValueError(
                     f'Expected {self.in_channels} flattened channels, got '
                     f'{tuple(x.shape)}')
-            x = x.reshape(x.shape[0], -1, 2, x.shape[-1])
+            x = x.reshape(x.shape[0], -1, self.keypoint_dim, x.shape[-1])
         if x.ndim != 4 or x.shape[-1] != self.seq_len:
             raise ValueError(
                 f'Expected (B, K, C, {self.seq_len}), got {tuple(x.shape)}')
