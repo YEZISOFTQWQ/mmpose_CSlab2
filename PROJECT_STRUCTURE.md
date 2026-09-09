@@ -147,6 +147,7 @@ work_dirs/strided_transformer_h36m_rtmpose_9frm/best_MPJPE_epoch_70.pth
 
 - `projects/single_image_pose_lift/`、`projects/strided_transformer_pose_lift/`
   中的源代码、训练配置、评估脚本和说明文档；
+- `projects/pose_desktop/` 中的批量 GUI、推理适配、渲染、输入输出处理和说明文档；
 - `tools/` 中新增或修改的可复现数据转换、评估、渲染脚本；
 - 小型文本配置、Markdown 文档、依赖说明和 `.gitignore` 规则；
 - 不含模型参数、隐私内容或受限数据的测试代码。
