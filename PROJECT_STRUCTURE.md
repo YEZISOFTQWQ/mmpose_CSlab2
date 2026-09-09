@@ -2,7 +2,7 @@
 
 本仓库以 MMPose 源码为基础；MMPose 的核心源码与官方配置没有被修改。
 本项目新增的内容集中在 `projects/single_image_pose_lift/`、
-`projects/strided_transformer_pose_lift/`、`data/`、`work_dirs/` 与
+`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、`data/`、`work_dirs/` 与
 `artifacts/`。
 
 ```text
@@ -16,7 +16,8 @@ src/
 │   └── render_pose3d_views.py        # 新增：多视角 3D 骨架渲染
 ├── projects/
 │   ├── single_image_pose_lift/      # 新增：单图 2D→3D 模型、数据与评估代码
-│   └── strided_transformer_pose_lift/ # 新增：时序 Strided Transformer 实验
+│   ├── strided_transformer_pose_lift/ # 新增：时序 Strided Transformer 实验
+│   └── pose_desktop/                # 新增：图片/视频批量 2D+3D 推理 GUI
 ├── data/
 │   ├── h36m/                        # H36M 注释与训练输入
 │   └── h36m_raw/archives/           # S1/S5/S6/S7/S8/S9/S11 原始 tar 包
@@ -41,7 +42,7 @@ src/
 
 ## `projects/strided_transformer_pose_lift/`
 
-第三条、尚未开始训练的时序 2D→3D 路线。以连续 9 帧 RTMPose 17 点为输入，
+第三条、已完成训练的时序 2D→3D 路线。以连续 9 帧 RTMPose 17 点为输入，
 使用论文 *Exploiting Temporal Contexts with Strided Transformer for 3D
 Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
 
@@ -55,6 +56,29 @@ Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
 | `tools/validate_temporal_inputs.py` | 训练前只读检查数据文件、形状、数值与可用窗口数。 |
 | `tools/benchmark_batch_size.py` | 不保存 checkpoint 的训练吞吐基准，用于选择 batch size。 |
 | `TRAINING_REVIEW.md` | 方法、参数、数据要求和待审核训练命令。 |
+| `ALGORITHM_AND_PAPER_COMPARISON.md` | 当前 VTE+STE 实现的数据流、公式，以及与原论文的相同点和差异。 |
+| `transforms.py` | v4 输入遮挡增强：连续帧的局部关节遮挡，但不修改 3D 标签。 |
+| `strided_transformer_h36m_rtmpose_occconf_9frm.py` | v4 独立配置：输入 `(x,y,confidence,mask)` 共 68 通道。 |
+| `OCCLUSION_V4_REVIEW.md` | v4 遮挡增强的算法、边界、成本、训练命令和必需评测。 |
+
+## `projects/pose_desktop/`
+
+PySide6 图形界面，用于批量输入图片、视频或文件夹，并将结果输出到带时间戳的
+`artifacts/batch_output/` 目录。界面可选择 2D 骨架、人体框、旁侧 3D 坐标轴骨架和
+关键点 JSON 导出。
+
+| 文件/目录 | 用途 |
+|---|---|
+| `main.py` | GUI 启动入口，窗口标题为 `MMpose App CSlab`。 |
+| `ui/batch_panel.py` | 批量输入、输出目录、标注和模型选择控件。 |
+| `workers/batch.py` | 后台批量推理线程；v3 使用内存有界的 9 帧滑动窗口。 |
+| `inference/pipeline.py` | RTMDet + RTMPose 前端，以及 v2 单帧/v3 时序 lifter 适配。 |
+| `inference/rendering.py` | 2D 标注、白底相机视角 3D 坐标轴骨架渲染。 |
+| `README.md` | 安装、运行、输入输出和模型模式说明。 |
+
+v2 单帧模式支持图片和视频，并可独立处理最多 4 人；v3 时序模式仅支持视频中的
+最高置信度单人，使用非因果窗口 `t-4…t+4`，在视频边界复制帧补齐。v3 不应对单张
+图片伪造时序输入；界面会明确提示改用 v2。
 
 ## `data/`
 
@@ -81,7 +105,7 @@ Human Pose Estimation* 的 VTE + STE 全序列到中心帧监督思路。
 |---|---|---|
 | `image_pose_lift_tcn_h36m_keypoints/` | `best_MPJPE_epoch_75.pth` | 第一版：真值 2D 输入基线。 |
 | `image_pose_lift_tcn_h36m_rtmpose_v2/` | `best_MPJPE_epoch_75.pth` | 第二版：RTMPose 输入模型；部署推荐使用。 |
-| `strided_transformer_h36m_rtmpose_9frm/` | 尚未产生 | 第三版：9 帧 RTMPose 输入的 Strided Transformer；训练审核通过后才创建。 |
+| `strided_transformer_h36m_rtmpose_9frm/` | `best_MPJPE_epoch_70.pth` | 第三版：9 帧 RTMPose 输入的 Strided Transformer；最佳 MPJPE 为 0.059038 m。 |
 
 每个目录下的日期子目录保留了 MMEngine 训练日志和 `vis_data/` 指标 JSON。
 非最佳 checkpoint 已清理。
@@ -104,12 +128,16 @@ work_dirs/image_pose_lift_tcn_h36m_keypoints/best_MPJPE_epoch_75.pth
 
 # 第二版：RTMDet + RTMPose 输入（推荐）
 work_dirs/image_pose_lift_tcn_h36m_rtmpose_v2/best_MPJPE_epoch_75.pth
+
+# 第三版：9 帧时序输入（仅视频）
+work_dirs/strided_transformer_h36m_rtmpose_9frm/best_MPJPE_epoch_70.pth
 ```
 
 ## 版本控制说明
 
 数据集、权重、训练输出与可视化结果通常不应提交到 Git；它们均为本地实验资产。
-项目代码和说明文件位于 `projects/single_image_pose_lift/`、`tools/` 与本文档中。
+项目代码和说明文件位于 `projects/single_image_pose_lift/`、
+`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、`tools/` 与本文档中。
 
 ## 所有成员提交规则
 
