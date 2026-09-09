@@ -27,17 +27,30 @@ class ModelPaths:
     det_checkpoint: Path
     pose2d_config: Path
     pose2d_checkpoint: Path
-    lifter_config: Path
-    lifter_checkpoint: Path
+    single_lifter_config: Path
+    single_lifter_checkpoint: Path
+    temporal_lifter_config: Path
+    temporal_lifter_checkpoint: Path
+
+    def lifter_paths(self, temporal: bool) -> tuple[Path, Path]:
+        """Return the config/checkpoint pair for the selected GUI mode."""
+        if temporal:
+            return self.temporal_lifter_config, self.temporal_lifter_checkpoint
+        return self.single_lifter_config, self.single_lifter_checkpoint
 
     @classmethod
     def defaults(cls) -> 'ModelPaths':
         resource_root = _resource_root()
         bundled = getattr(sys, 'frozen', False)
         assets = resource_root / 'models' if bundled else SOURCE_ROOT / 'artifacts/models'
-        lifter_checkpoint = (assets / 'best_MPJPE_epoch_75.pth' if bundled else
-                             SOURCE_ROOT / 'work_dirs/image_pose_lift_tcn_h36m_rtmpose_v2/'
-                             'best_MPJPE_epoch_75.pth')
+        single_lifter_checkpoint = (
+            assets / 'best_MPJPE_epoch_75.pth' if bundled else SOURCE_ROOT /
+            'work_dirs/image_pose_lift_tcn_h36m_rtmpose_v2/'
+            'best_MPJPE_epoch_75.pth')
+        # v3 is a local H36M experiment and is deliberately not bundled.
+        temporal_lifter_checkpoint = SOURCE_ROOT / \
+            'work_dirs/strided_transformer_h36m_rtmpose_9frm/' \
+            'best_MPJPE_epoch_70.pth'
         return cls(
             det_config=resource_root / 'demo/mmdetection_cfg/'
             'rtmdet_m_640-8xb32_coco-person.py',
@@ -47,9 +60,14 @@ class ModelPaths:
             'body8/rtmpose-m_8xb256-420e_body8-256x192.py',
             pose2d_checkpoint=assets /
             'rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.pth',
-            lifter_config=resource_root / 'projects/single_image_pose_lift/'
+            single_lifter_config=resource_root /
+            'projects/single_image_pose_lift/'
             'image_pose_lift_tcn_h36m_rtmpose_v2.py',
-            lifter_checkpoint=lifter_checkpoint)
+            single_lifter_checkpoint=single_lifter_checkpoint,
+            temporal_lifter_config=resource_root /
+            'projects/strided_transformer_pose_lift/'
+            'strided_transformer_h36m_rtmpose_9frm.py',
+            temporal_lifter_checkpoint=temporal_lifter_checkpoint)
 
 
 @dataclass(frozen=True)
@@ -59,3 +77,4 @@ class RuntimeOptions:
     bbox_threshold: float = 0.3
     max_people: int = 1
     norm_pose_2d: bool = False
+    temporal: bool = False

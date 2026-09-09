@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFileDialog,
-                               QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
+                               QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QMessageBox,
                                QPushButton, QProgressBar, QSpinBox, QVBoxLayout,
                                QWidget)
@@ -33,9 +33,17 @@ class BatchPanel(QWidget):
         for checkbox in (self.show_keypoints, self.show_bbox, self.show_3d,
                          self.save_keypoints):
             checkbox.setChecked(True)
+        self.lifter_mode = QComboBox()
+        self.lifter_mode.addItem('v2 single-frame model (images and videos)', False)
+        self.lifter_mode.addItem('v3 9-frame temporal model (video, one person)', True)
+        self.lifter_mode.currentIndexChanged.connect(self._update_mode_controls)
         self.max_people = QSpinBox()
         self.max_people.setRange(1, 4)
         self.max_people.setValue(1)
+        self.temporal_note = QLabel(
+            'v3 uses t-4…t+4 and repeats boundary frames. It processes the '
+            'highest-score person only; images require v2.')
+        self.temporal_note.setWordWrap(True)
         self.start_button = QPushButton('Run batch inference')
         self.cancel_button = QPushButton('Cancel after current frame')
         self.cancel_button.setEnabled(False)
@@ -60,7 +68,8 @@ class BatchPanel(QWidget):
             input_actions.addWidget(button)
         input_group = QGroupBox('Input media')
         input_layout = QVBoxLayout(input_group)
-        input_layout.addWidget(QLabel('Folders are scanned recursively for supported images and videos.'))
+        input_layout.addWidget(QLabel(
+            'Folders are scanned recursively for supported images and videos.'))
         input_layout.addWidget(self.inputs)
         input_layout.addLayout(input_actions)
 
@@ -76,7 +85,9 @@ class BatchPanel(QWidget):
         form.addRow(self.show_bbox)
         form.addRow(self.show_3d)
         form.addRow(self.save_keypoints)
+        form.addRow('3D model', self.lifter_mode)
         form.addRow('Maximum people per frame', self.max_people)
+        form.addRow(self.temporal_note)
 
         controls = QHBoxLayout()
         controls.addWidget(self.start_button)
@@ -88,6 +99,14 @@ class BatchPanel(QWidget):
         layout.addLayout(controls)
         layout.addWidget(self.progress)
         layout.addWidget(self.status)
+        self._update_mode_controls()
+
+    def _update_mode_controls(self):
+        temporal = bool(self.lifter_mode.currentData())
+        self.max_people.setEnabled(not temporal)
+        if temporal:
+            self.max_people.setValue(1)
+        self.temporal_note.setVisible(temporal)
 
     def add_files(self):
         paths, _ = QFileDialog.getOpenFileNames(
@@ -109,7 +128,8 @@ class BatchPanel(QWidget):
                 existing.add(absolute)
 
     def choose_output(self):
-        path = QFileDialog.getExistingDirectory(self, 'Select output root', self.output_root.text())
+        path = QFileDialog.getExistingDirectory(self, 'Select output root',
+                                                self.output_root.text())
         if path:
             self.output_root.setText(path)
 
@@ -117,12 +137,15 @@ class BatchPanel(QWidget):
         paths = tuple(Path(self.inputs.item(index).text())
                       for index in range(self.inputs.count()))
         if not paths:
-            QMessageBox.warning(self, 'No input', 'Add at least one image, video, or folder.')
+            QMessageBox.warning(self, 'No input',
+                                'Add at least one image, video, or folder.')
             return
         output_root = Path(self.output_root.text()).expanduser()
+        temporal = bool(self.lifter_mode.currentData())
         options = BatchOptions(paths, output_root, self.show_keypoints.isChecked(),
                                self.show_bbox.isChecked(), self.show_3d.isChecked(),
-                               self.save_keypoints.isChecked(), self.max_people.value())
+                               self.save_keypoints.isChecked(), self.max_people.value(),
+                               temporal)
         self.worker = BatchInferenceWorker(self.paths, self.device, options)
         self.worker.status.connect(self.status.setText)
         self.worker.progress.connect(self.update_progress)
@@ -145,7 +168,8 @@ class BatchPanel(QWidget):
         self.status.setText(f'[{current}/{total}] {name}')
 
     def complete(self, output_dir, completed):
-        self.status.setText(('Completed: ' if completed else 'Cancelled; partial results: ') + output_dir)
+        prefix = 'Completed: ' if completed else 'Cancelled; partial results: '
+        self.status.setText(prefix + output_dir)
         self._finish()
 
     def fail(self, message):

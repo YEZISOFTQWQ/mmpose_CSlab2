@@ -37,21 +37,31 @@ def parse_args():
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--det-checkpoint')
     parser.add_argument('--pose2d-checkpoint')
-    parser.add_argument('--lifter-checkpoint')
+    parser.add_argument('--lifter-checkpoint',
+                        help='Legacy alias for --single-lifter-checkpoint')
+    parser.add_argument('--single-lifter-checkpoint')
+    parser.add_argument('--temporal-lifter-checkpoint')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     paths = ModelPaths.defaults()
-    if any((args.det_checkpoint, args.pose2d_checkpoint, args.lifter_checkpoint)):
+    single_checkpoint = (args.single_lifter_checkpoint or
+                         args.lifter_checkpoint)
+    if any((args.det_checkpoint, args.pose2d_checkpoint, single_checkpoint,
+            args.temporal_lifter_checkpoint)):
         paths = ModelPaths(
             paths.det_config,
             Path(args.det_checkpoint) if args.det_checkpoint else paths.det_checkpoint,
             paths.pose2d_config,
             Path(args.pose2d_checkpoint) if args.pose2d_checkpoint else paths.pose2d_checkpoint,
-            paths.lifter_config,
-            Path(args.lifter_checkpoint) if args.lifter_checkpoint else paths.lifter_checkpoint)
+            paths.single_lifter_config,
+            Path(single_checkpoint) if single_checkpoint else paths.single_lifter_checkpoint,
+            paths.temporal_lifter_config,
+            (Path(args.temporal_lifter_checkpoint)
+             if args.temporal_lifter_checkpoint
+             else paths.temporal_lifter_checkpoint))
     app = QApplication(sys.argv)
     window = PoseDesktopWindow(paths, args.device)
     window.show()

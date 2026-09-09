@@ -1,6 +1,7 @@
-"""Background worker for batch image and video pose inference."""
+"""Background worker for batch v2 single-frame and v3 temporal inference."""
 
 import json
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ class BatchOptions:
     show_3d: bool = True
     save_keypoints: bool = True
     max_people: int = 1
+    temporal: bool = False
 
 
 def discover_media(inputs):
@@ -66,27 +68,48 @@ class BatchInferenceWorker(QThread):
     def stop(self):
         self._running = False
 
+    def _write_image_output(self, frame, predictions, destination):
+        output = render_prediction(frame, predictions, self.options.show_keypoints,
+                                   self.options.show_bbox, self.options.show_3d)
+        if not cv2.imwrite(str(destination), output):
+            raise IOError('cannot write image output')
+
     def _process_image(self, pipeline, source, destination, keypoint_path):
+        if self.options.temporal:
+            raise ValueError('The v3 9-frame model supports videos only; '
+                             'select v2 for image inference')
         image = cv2.imread(str(source))
         if image is None:
             raise ValueError('cannot decode image')
         predictions = pipeline.predict(image)
-        output = render_prediction(image, predictions, self.options.show_keypoints,
-                                   self.options.show_bbox, self.options.show_3d)
-        if not cv2.imwrite(str(destination), output):
-            raise IOError('cannot write image output')
+        self._write_image_output(image, predictions, destination)
         if self.options.save_keypoints:
             keypoint_path.write_text(json.dumps({
-                'source': str(source), 'predictions': prediction_record(predictions)},
+                'source': str(source), 'lifter_mode': 'single_frame_v2',
+                'predictions': prediction_record(predictions)},
                 ensure_ascii=False, indent=2), encoding='utf-8')
 
-    def _process_video(self, pipeline, source, destination, keypoint_path):
+    def _open_video_outputs(self, source, keypoint_path):
         capture = cv2.VideoCapture(str(source))
         if not capture.isOpened():
             raise ValueError('cannot open video')
         fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
+        keypoint_file = keypoint_path.open('w', encoding='utf-8') \
+            if self.options.save_keypoints else None
+        return capture, fps, keypoint_file
+
+    @staticmethod
+    def _make_writer(destination, fps, output):
+        writer = cv2.VideoWriter(str(destination), cv2.VideoWriter_fourcc(*'mp4v'),
+                                 fps, (output.shape[1], output.shape[0]))
+        if not writer.isOpened():
+            raise IOError('cannot create output video')
+        return writer
+
+    def _process_video(self, pipeline, source, destination, keypoint_path):
+        """Run v2 once per input frame."""
+        capture, fps, keypoint_file = self._open_video_outputs(source, keypoint_path)
         writer = None
-        keypoint_file = keypoint_path.open('w', encoding='utf-8') if self.options.save_keypoints else None
         frames = 0
         try:
             while self._running:
@@ -94,20 +117,87 @@ class BatchInferenceWorker(QThread):
                 if not ok:
                     break
                 predictions = pipeline.predict(frame)
-                output = render_prediction(frame, predictions, self.options.show_keypoints,
-                                           self.options.show_bbox, self.options.show_3d)
+                output = render_prediction(frame, predictions,
+                                           self.options.show_keypoints,
+                                           self.options.show_bbox,
+                                           self.options.show_3d)
                 if writer is None:
-                    writer = cv2.VideoWriter(str(destination),
-                                             cv2.VideoWriter_fourcc(*'mp4v'), fps,
-                                             (output.shape[1], output.shape[0]))
-                    if not writer.isOpened():
-                        raise IOError('cannot create output video')
+                    writer = self._make_writer(destination, fps, output)
                 writer.write(output)
                 if keypoint_file:
                     keypoint_file.write(json.dumps({
-                        'frame_index': frames, 'predictions': prediction_record(predictions)},
+                        'frame_index': frames, 'lifter_mode': 'single_frame_v2',
+                        'predictions': prediction_record(predictions)},
                         ensure_ascii=False) + '\n')
                 frames += 1
+        finally:
+            capture.release()
+            if writer:
+                writer.release()
+            if keypoint_file:
+                keypoint_file.close()
+        return frames
+
+    def _process_temporal_video(self, pipeline, source, destination,
+                                keypoint_path):
+        """Run v3 with a bounded, padded 9-frame centred window.
+
+        Every real frame is detected exactly once. Only nine `(frame,
+        detections)` records are held at once. Repeated edge records implement
+        the same boundary-padding intent as v3 validation data.
+        """
+        capture, fps, keypoint_file = self._open_video_outputs(source, keypoint_path)
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames < 1:
+            capture.release()
+            if keypoint_file:
+                keypoint_file.close()
+            raise ValueError('video contains no readable frames')
+
+        def read_detection():
+            ok, frame = capture.read()
+            return (frame, pipeline.detect_2d(frame)) if ok else None
+
+        first = read_detection()
+        if first is None:
+            capture.release()
+            if keypoint_file:
+                keypoint_file.close()
+            raise ValueError('cannot decode first video frame')
+        window = deque([first] * 5, maxlen=9)
+        for _ in range(4):
+            following = read_detection()
+            window.append(following if following is not None else window[-1])
+
+        writer = None
+        frames = 0
+        try:
+            for frame_index in range(total_frames):
+                if not self._running:
+                    break
+                center_frame, _ = window[4]
+                height, width = center_frame.shape[:2]
+                predictions = pipeline.predict_temporal(
+                    [detections for _, detections in window], (width, height))
+                output = render_prediction(center_frame, predictions,
+                                           self.options.show_keypoints,
+                                           self.options.show_bbox,
+                                           self.options.show_3d)
+                if writer is None:
+                    writer = self._make_writer(destination, fps, output)
+                writer.write(output)
+                if keypoint_file:
+                    keypoint_file.write(json.dumps({
+                        'frame_index': frame_index,
+                        'lifter_mode': 'temporal_v3_noncausal_9frame',
+                        'window_indices': [max(0, frame_index - 4), frame_index,
+                                           min(total_frames - 1, frame_index + 4)],
+                        'predictions': prediction_record(predictions)},
+                        ensure_ascii=False) + '\n')
+                frames += 1
+                if frame_index + 1 < total_frames:
+                    following = read_detection()
+                    window.append(following if following is not None else window[-1])
         finally:
             capture.release()
             if writer:
@@ -132,12 +222,15 @@ class BatchInferenceWorker(QThread):
                                 'show_bbox': self.options.show_bbox,
                                 'show_3d': self.options.show_3d,
                                 'save_keypoints': self.options.save_keypoints,
-                                'max_people': self.options.max_people},
+                                'max_people': self.options.max_people,
+                                'lifter_mode': ('temporal_v3' if self.options.temporal
+                                                else 'single_frame_v2')},
                     'items': []}
         try:
             self.status.emit('Loading models on ' + self.device)
-            pipeline = PosePipeline(self.paths, RuntimeOptions(device=self.device,
-                                    max_people=self.options.max_people))
+            pipeline = PosePipeline(self.paths, RuntimeOptions(
+                device=self.device, max_people=self.options.max_people,
+                temporal=self.options.temporal))
             pipeline.load()
             for number, source in enumerate(media, 1):
                 if not self._running:
@@ -154,7 +247,9 @@ class BatchInferenceWorker(QThread):
                     else:
                         output = video_dir / f'{stem}.mp4'
                         keypoints = keypoint_dir / f'{stem}.jsonl'
-                        frames = self._process_video(pipeline, source, output, keypoints)
+                        process_video = (self._process_temporal_video
+                                         if self.options.temporal else self._process_video)
+                        frames = process_video(pipeline, source, output, keypoints)
                         item = {'source': str(source), 'type': 'video',
                                 'frames_processed': frames,
                                 'output': str(output.relative_to(run_dir))}
