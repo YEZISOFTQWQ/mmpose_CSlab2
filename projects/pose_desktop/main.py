@@ -41,6 +41,8 @@ def parse_args():
                         help='Legacy alias for --single-lifter-checkpoint')
     parser.add_argument('--single-lifter-checkpoint')
     parser.add_argument('--temporal-lifter-checkpoint')
+    parser.add_argument('--occlusion-lifter-checkpoint',
+                        help='Override the v4 confidence/occlusion checkpoint')
     return parser.parse_args()
 
 
@@ -50,7 +52,7 @@ def main():
     single_checkpoint = (args.single_lifter_checkpoint or
                          args.lifter_checkpoint)
     if any((args.det_checkpoint, args.pose2d_checkpoint, single_checkpoint,
-            args.temporal_lifter_checkpoint)):
+            args.temporal_lifter_checkpoint, args.occlusion_lifter_checkpoint)):
         paths = ModelPaths(
             paths.det_config,
             Path(args.det_checkpoint) if args.det_checkpoint else paths.det_checkpoint,
@@ -61,7 +63,11 @@ def main():
             paths.temporal_lifter_config,
             (Path(args.temporal_lifter_checkpoint)
              if args.temporal_lifter_checkpoint
-             else paths.temporal_lifter_checkpoint))
+             else paths.temporal_lifter_checkpoint),
+            paths.occlusion_lifter_config,
+            (Path(args.occlusion_lifter_checkpoint)
+             if args.occlusion_lifter_checkpoint
+             else paths.occlusion_lifter_checkpoint))
     app = QApplication(sys.argv)
     window = PoseDesktopWindow(paths, args.device)
     window.show()

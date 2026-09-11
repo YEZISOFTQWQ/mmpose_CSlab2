@@ -31,12 +31,18 @@ class ModelPaths:
     single_lifter_checkpoint: Path
     temporal_lifter_config: Path
     temporal_lifter_checkpoint: Path
+    occlusion_lifter_config: Path
+    occlusion_lifter_checkpoint: Path
 
-    def lifter_paths(self, temporal: bool) -> tuple[Path, Path]:
+    def lifter_paths(self, lifter_mode: str) -> tuple[Path, Path]:
         """Return the config/checkpoint pair for the selected GUI mode."""
-        if temporal:
+        if lifter_mode == 'temporal_v4':
+            return self.occlusion_lifter_config, self.occlusion_lifter_checkpoint
+        if lifter_mode == 'temporal_v3':
             return self.temporal_lifter_config, self.temporal_lifter_checkpoint
-        return self.single_lifter_config, self.single_lifter_checkpoint
+        if lifter_mode == 'single_frame_v2':
+            return self.single_lifter_config, self.single_lifter_checkpoint
+        raise ValueError(f'Unknown lifter mode: {lifter_mode}')
 
     @classmethod
     def defaults(cls) -> 'ModelPaths':
@@ -50,6 +56,9 @@ class ModelPaths:
         # v3 is a local H36M experiment and is deliberately not bundled.
         temporal_lifter_checkpoint = SOURCE_ROOT / \
             'work_dirs/strided_transformer_h36m_rtmpose_9frm/' \
+            'best_MPJPE_epoch_70.pth'
+        occlusion_lifter_checkpoint = SOURCE_ROOT / \
+            'work_dirs/strided_transformer_h36m_rtmpose_occconf_9frm/' \
             'best_MPJPE_epoch_70.pth'
         return cls(
             det_config=resource_root / 'demo/mmdetection_cfg/'
@@ -67,7 +76,11 @@ class ModelPaths:
             temporal_lifter_config=resource_root /
             'projects/strided_transformer_pose_lift/'
             'strided_transformer_h36m_rtmpose_9frm.py',
-            temporal_lifter_checkpoint=temporal_lifter_checkpoint)
+            temporal_lifter_checkpoint=temporal_lifter_checkpoint,
+            occlusion_lifter_config=resource_root /
+            'projects/strided_transformer_pose_lift/'
+            'strided_transformer_h36m_rtmpose_occconf_9frm.py',
+            occlusion_lifter_checkpoint=occlusion_lifter_checkpoint)
 
 
 @dataclass(frozen=True)
@@ -77,4 +90,12 @@ class RuntimeOptions:
     bbox_threshold: float = 0.3
     max_people: int = 1
     norm_pose_2d: bool = False
-    temporal: bool = False
+    lifter_mode: str = 'single_frame_v2'
+
+    @property
+    def temporal(self) -> bool:
+        return self.lifter_mode.startswith('temporal_')
+
+    @property
+    def occlusion_aware(self) -> bool:
+        return self.lifter_mode == 'temporal_v4'

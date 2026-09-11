@@ -34,15 +34,21 @@ class BatchPanel(QWidget):
                          self.save_keypoints):
             checkbox.setChecked(True)
         self.lifter_mode = QComboBox()
-        self.lifter_mode.addItem('v2 single-frame model (images and videos)', False)
-        self.lifter_mode.addItem('v3 9-frame temporal model (video, one person)', True)
+        self.lifter_mode.addItem('v2 single-frame model (images and videos)',
+                                 'single_frame_v2')
+        self.lifter_mode.addItem('v3 9-frame temporal model (video, one person)',
+                                 'temporal_v3')
+        self.lifter_mode.addItem(
+            'v4 confidence + occlusion-aware temporal model (video, one person)',
+            'temporal_v4')
         self.lifter_mode.currentIndexChanged.connect(self._update_mode_controls)
         self.max_people = QSpinBox()
         self.max_people.setRange(1, 4)
         self.max_people.setValue(1)
         self.temporal_note = QLabel(
-            'v3 uses t-4…t+4 and repeats boundary frames. It processes the '
-            'highest-score person only; images require v2.')
+            'v3/v4 use t-4…t+4 and repeat boundary frames. They process the '
+            'highest-score person only; images require v2. v4 uses RTMPose '
+            'confidence with an all-visible mask during deployment.')
         self.temporal_note.setWordWrap(True)
         self.start_button = QPushButton('Run batch inference')
         self.cancel_button = QPushButton('Cancel after current frame')
@@ -102,7 +108,7 @@ class BatchPanel(QWidget):
         self._update_mode_controls()
 
     def _update_mode_controls(self):
-        temporal = bool(self.lifter_mode.currentData())
+        temporal = str(self.lifter_mode.currentData()).startswith('temporal_')
         self.max_people.setEnabled(not temporal)
         if temporal:
             self.max_people.setValue(1)
@@ -141,11 +147,11 @@ class BatchPanel(QWidget):
                                 'Add at least one image, video, or folder.')
             return
         output_root = Path(self.output_root.text()).expanduser()
-        temporal = bool(self.lifter_mode.currentData())
+        lifter_mode = str(self.lifter_mode.currentData())
         options = BatchOptions(paths, output_root, self.show_keypoints.isChecked(),
                                self.show_bbox.isChecked(), self.show_3d.isChecked(),
                                self.save_keypoints.isChecked(), self.max_people.value(),
-                               temporal)
+                               lifter_mode)
         self.worker = BatchInferenceWorker(self.paths, self.device, options)
         self.worker.status.connect(self.status.setText)
         self.worker.progress.connect(self.update_progress)

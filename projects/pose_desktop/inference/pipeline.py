@@ -17,6 +17,7 @@ class PoseDetection:
     bbox: np.ndarray
     score: float
     keypoints_2d: np.ndarray
+    keypoint_scores: np.ndarray
 
 
 @dataclass
@@ -28,7 +29,7 @@ class PosePrediction:
 
 
 class PosePipeline:
-    """Load models once and expose detector, v2 and v3 inference methods."""
+    """Load models once and expose v2, v3 and v4 inference methods."""
 
     def __init__(self, paths: ModelPaths, options: RuntimeOptions):
         self.paths = paths
@@ -39,7 +40,7 @@ class PosePipeline:
 
     def load(self) -> None:
         lifter_config, lifter_checkpoint = self.paths.lifter_paths(
-            self.options.temporal)
+            self.options.lifter_mode)
         required = (self.paths.det_config, self.paths.det_checkpoint,
                     self.paths.pose2d_config, self.paths.pose2d_checkpoint,
                     lifter_config, lifter_checkpoint)
@@ -48,7 +49,7 @@ class PosePipeline:
             raise FileNotFoundError('Missing model/config files:\n' +
                                     '\n'.join(missing))
 
-        # The v3 config imports ``projects.strided_transformer_pose_lift``.
+        # The v3/v4 configs import ``projects.strided_transformer_pose_lift``.
         # Running main.py otherwise puts only this app directory on sys.path.
         if str(SOURCE_ROOT) not in sys.path:
             sys.path.insert(0, str(SOURCE_ROOT))
@@ -89,12 +90,22 @@ class PosePipeline:
 
         detections = []
         for bbox, det_index, pose_result in zip(bboxes, people, pose_results):
-            coco = pose_result.pred_instances.cpu().numpy().keypoints[0]
-            h36m = convert_keypoint_definition(coco[None], 'coco', 'h36m')
+            pose_instances = pose_result.pred_instances.cpu().numpy()
+            coco = pose_instances.keypoints[0]
+            coco_scores = pose_instances.keypoint_scores[0]
+            # Conversion averages derived joints (pelvis, thorax, spine, head).
+            # Supplying score as a third coordinate applies the same mapping to
+            # its confidence, which matches the v4 H36M-17 training input.
+            coco_with_scores = np.concatenate(
+                [coco, coco_scores[:, None]], axis=-1)
+            h36m_with_scores = convert_keypoint_definition(
+                coco_with_scores[None], 'coco', 'h36m')[0]
             detections.append(PoseDetection(
                 bbox=bbox.astype(np.float32),
                 score=float(instances.scores[det_index]),
-                keypoints_2d=h36m[0].astype(np.float32)))
+                keypoints_2d=h36m_with_scores[:, :2].astype(np.float32),
+                keypoint_scores=np.clip(h36m_with_scores[:, 2], 0., 1.)
+                .astype(np.float32)))
         return detections
 
     @staticmethod
@@ -114,7 +125,7 @@ class PosePipeline:
     def predict(self, frame_bgr: np.ndarray) -> List[PosePrediction]:
         """Run v2 single-frame lifting; valid for images and videos."""
         if self.options.temporal:
-            raise RuntimeError('Use predict_temporal() for the v3 model')
+            raise RuntimeError('Use predict_temporal() for a temporal model')
         from mmpose.apis import inference_pose_lifter_model
 
         height, width = frame_bgr.shape[:2]
@@ -136,14 +147,14 @@ class PosePipeline:
 
     def predict_temporal(self, window: Sequence[Sequence[PoseDetection]],
                          image_size: tuple[int, int]) -> List[PosePrediction]:
-        """Lift one centred 9-frame window with v3.
+        """Lift one centred 9-frame window with v3 or v4.
 
         v3 was trained on one H36M person per sequence and does not include a
         person-tracking loss. Temporal GUI inference explicitly selects the
         highest-score detection from every frame rather than mixing identities.
         """
         if not self.options.temporal:
-            raise RuntimeError('Temporal prediction requires the v3 model')
+            raise RuntimeError('Temporal prediction requires a v3 or v4 model')
         if len(window) != 9:
             raise ValueError(f'v3 requires a 9-frame window, got {len(window)}')
         if any(not detections for detections in window):
@@ -159,8 +170,16 @@ class PosePipeline:
         if scale <= 0:
             raise ValueError(f'Invalid frame width: {width}')
         normalized = (keypoints.astype(np.float32) - center) / scale
-        # Match TemporalImagePoseLifting.encode(): (T, J, 2) -> (J*2, T).
-        inputs = normalized.transpose(1, 2, 0).reshape(1, -1, 9)
+        if self.options.occlusion_aware:
+            confidence = np.stack(
+                [detections[0].keypoint_scores for detections in window])
+            mask = np.ones(confidence.shape, dtype=np.float32)
+            features = np.concatenate(
+                [normalized, confidence[..., None], mask[..., None]], axis=-1)
+        else:
+            features = normalized
+        # Match TemporalImagePoseLifting.encode(): (T, J, C) -> (J*C, T).
+        inputs = features.transpose(1, 2, 0).reshape(1, -1, 9)
         tensor = torch.from_numpy(inputs).to(self.options.device)
         with torch.inference_mode():
             pose3d = self.lifter(tensor, None, mode='tensor')
