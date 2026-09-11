@@ -21,7 +21,7 @@ src/
 ├── data/
 │   ├── h36m/                        # H36M 注释与训练输入
 │   └── h36m_raw/archives/           # S1/S5/S6/S7/S8/S9/S11 原始 tar 包
-├── work_dirs/                       # 两轮训练的最佳模型、日志和指标
+├── work_dirs/                       # 各训练路线的最佳模型、日志和指标
 ├── artifacts/                       # 权重、输入媒体、最终视频与报告图
 └── PROJECT_STRUCTURE.md             # 本文档
 ```
@@ -71,14 +71,15 @@ PySide6 图形界面，用于批量输入图片、视频或文件夹，并将结
 |---|---|
 | `main.py` | GUI 启动入口，窗口标题为 `MMpose App CSlab`。 |
 | `ui/batch_panel.py` | 批量输入、输出目录、标注和模型选择控件。 |
-| `workers/batch.py` | 后台批量推理线程；v3 使用内存有界的 9 帧滑动窗口。 |
-| `inference/pipeline.py` | RTMDet + RTMPose 前端，以及 v2 单帧/v3 时序 lifter 适配。 |
+| `workers/batch.py` | 后台批量推理线程；v3/v4 使用内存有界的 9 帧滑动窗口。 |
+| `inference/pipeline.py` | RTMDet + RTMPose 前端，以及 v2 单帧、v3/v4 时序 lifter 适配。 |
 | `inference/rendering.py` | 2D 标注、白底相机视角 3D 坐标轴骨架渲染。 |
 | `README.md` | 安装、运行、输入输出和模型模式说明。 |
 
-v2 单帧模式支持图片和视频，并可独立处理最多 4 人；v3 时序模式仅支持视频中的
-最高置信度单人，使用非因果窗口 `t-4…t+4`，在视频边界复制帧补齐。v3 不应对单张
-图片伪造时序输入；界面会明确提示改用 v2。
+v2 单帧模式支持图片和视频，并可独立处理最多 4 人；v3/v4 时序模式仅支持视频中的
+最高置信度单人，使用非因果窗口 `t-4…t+4`，在视频边界复制帧补齐。v4 使用 RTMPose
+置信度与全可见掩码构造 68 通道输入，并加载 `best_MPJPE_epoch_70.pth`。时序模型不应对
+单张图片伪造时序输入；界面会明确提示改用 v2。
 
 ## `data/`
 
@@ -106,6 +107,7 @@ v2 单帧模式支持图片和视频，并可独立处理最多 4 人；v3 时�
 | `image_pose_lift_tcn_h36m_keypoints/` | `best_MPJPE_epoch_75.pth` | 第一版：真值 2D 输入基线。 |
 | `image_pose_lift_tcn_h36m_rtmpose_v2/` | `best_MPJPE_epoch_75.pth` | 第二版：RTMPose 输入模型；部署推荐使用。 |
 | `strided_transformer_h36m_rtmpose_9frm/` | `best_MPJPE_epoch_70.pth` | 第三版：9 帧 RTMPose 输入的 Strided Transformer；最佳 MPJPE 为 0.059038 m。 |
+| `strided_transformer_h36m_rtmpose_occconf_9frm/` | `best_MPJPE_epoch_70.pth` | 第四版：9 帧 `(x,y,confidence,mask)` 输入与连续遮挡增强；最佳 MPJPE 为 0.058356 m。 |
 
 每个目录下的日期子目录保留了 MMEngine 训练日志和 `vis_data/` 指标 JSON。
 非最佳 checkpoint 已清理。
@@ -131,6 +133,9 @@ work_dirs/image_pose_lift_tcn_h36m_rtmpose_v2/best_MPJPE_epoch_75.pth
 
 # 第三版：9 帧时序输入（仅视频）
 work_dirs/strided_transformer_h36m_rtmpose_9frm/best_MPJPE_epoch_70.pth
+
+# 第四版：置信度与遮挡感知 9 帧输入（仅视频）
+work_dirs/strided_transformer_h36m_rtmpose_occconf_9frm/best_MPJPE_epoch_70.pth
 ```
 
 ## 版本控制说明

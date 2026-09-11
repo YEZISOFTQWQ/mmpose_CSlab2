@@ -1,4 +1,4 @@
-"""Background worker for batch v2 single-frame and v3 temporal inference."""
+"""Background worker for batch v2, v3 and v4 pose inference."""
 
 import json
 from collections import deque
@@ -27,7 +27,11 @@ class BatchOptions:
     show_3d: bool = True
     save_keypoints: bool = True
     max_people: int = 1
-    temporal: bool = False
+    lifter_mode: str = 'single_frame_v2'
+
+    @property
+    def temporal(self) -> bool:
+        return self.lifter_mode.startswith('temporal_')
 
 
 def discover_media(inputs):
@@ -76,7 +80,7 @@ class BatchInferenceWorker(QThread):
 
     def _process_image(self, pipeline, source, destination, keypoint_path):
         if self.options.temporal:
-            raise ValueError('The v3 9-frame model supports videos only; '
+            raise ValueError('The v3/v4 9-frame models support videos only; '
                              'select v2 for image inference')
         image = cv2.imread(str(source))
         if image is None:
@@ -140,7 +144,7 @@ class BatchInferenceWorker(QThread):
 
     def _process_temporal_video(self, pipeline, source, destination,
                                 keypoint_path):
-        """Run v3 with a bounded, padded 9-frame centred window.
+        """Run v3/v4 with a bounded, padded 9-frame centred window.
 
         Every real frame is detected exactly once. Only nine `(frame,
         detections)` records are held at once. Repeated edge records implement
@@ -189,7 +193,7 @@ class BatchInferenceWorker(QThread):
                 if keypoint_file:
                     keypoint_file.write(json.dumps({
                         'frame_index': frame_index,
-                        'lifter_mode': 'temporal_v3_noncausal_9frame',
+                        'lifter_mode': self.options.lifter_mode + '_noncausal_9frame',
                         'window_indices': [max(0, frame_index - 4), frame_index,
                                            min(total_frames - 1, frame_index + 4)],
                         'predictions': prediction_record(predictions)},
@@ -223,14 +227,13 @@ class BatchInferenceWorker(QThread):
                                 'show_3d': self.options.show_3d,
                                 'save_keypoints': self.options.save_keypoints,
                                 'max_people': self.options.max_people,
-                                'lifter_mode': ('temporal_v3' if self.options.temporal
-                                                else 'single_frame_v2')},
+                                'lifter_mode': self.options.lifter_mode},
                     'items': []}
         try:
             self.status.emit('Loading models on ' + self.device)
             pipeline = PosePipeline(self.paths, RuntimeOptions(
                 device=self.device, max_people=self.options.max_people,
-                temporal=self.options.temporal))
+                lifter_mode=self.options.lifter_mode))
             pipeline.load()
             for number, source in enumerate(media, 1):
                 if not self._running:
