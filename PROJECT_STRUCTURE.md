@@ -2,7 +2,8 @@
 
 本仓库以 MMPose 源码为基础；MMPose 的核心源码与官方配置没有被修改。
 本项目新增的内容集中在 `projects/single_image_pose_lift/`、
-`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、`data/`、`work_dirs/` 与
+`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、
+`projects/mmpose_visualization/`、`data/`、`work_dirs/` 与
 `artifacts/`。
 
 ```text
@@ -17,7 +18,8 @@ src/
 ├── projects/
 │   ├── single_image_pose_lift/      # 新增：单图 2D→3D 模型、数据与评估代码
 │   ├── strided_transformer_pose_lift/ # 新增：时序 Strided Transformer 实验
-│   └── pose_desktop/                # 新增：图片/视频批量 2D+3D 推理 GUI
+│   ├── pose_desktop/                # 新增：图片/视频批量 2D+3D 推理 GUI
+│   └── mmpose_visualization/        # 新增：2D 关节角度计算与可视化
 ├── data/
 │   ├── h36m/                        # H36M 注释与训练输入
 │   └── h36m_raw/archives/           # S1/S5/S6/S7/S8/S9/S11 原始 tar 包
@@ -81,6 +83,30 @@ v2 单帧模式支持图片和视频，并可独立处理最多 4 人；v3/v4 �
 置信度与全可见掩码构造 68 通道输入，并加载 `best_MPJPE_epoch_70.pth`。时序模型不应对
 单张图片伪造时序输入；界面会明确提示改用 v2。
 
+## `projects/mmpose_visualization/`
+
+2D 关节角度计算与可视化扩展。在 RTMDet + RTMPose 得到 COCO-17 关键点后，按三点
+夹角公式计算肘、膝、髋关节角度，叠加到图片/视频，并在视频模式下导出角度—时间
+曲线、CSV 与统计文本。不修改 MMPose 核心，不重新训练网络。
+
+| 文件 | 用途 |
+|---|---|
+| `angel_clear.py` | CPU 多人角度脚本；绘制骨架、编号与关节角，不绘制左上角黑框面板。默认 RTMDet-nano + RTMPose-t。 |
+| `angel_gpu_clear.py` | GPU 多人角度脚本；默认 `cuda:0`、RTMDet-m + RTMPose-m。 |
+| `requirements.txt` | 本子项目额外依赖（matplotlib 等）；MMPose 本体依赖沿用仓库环境。 |
+| `README.md` | 英文说明：路径约定、运行命令、输出文件与角度定义。 |
+
+运行时请从仓库根目录调用，例如：
+
+```bash
+python projects/mmpose_visualization/angel_clear.py --input <image_or_video> --output-dir projects/mmpose_visualization/outputs
+```
+
+脚本通过 `Path(__file__).resolve().parent.parent.parent` 定位仓库根，从而正确加载
+`demo/mmdetection_cfg/` 与 `configs/body_2d_keypoint/rtmpose/`。图片模式只输出
+标注图；`angle_curve.png` / `angle_series.csv` / `angle_stats.txt` 仅在视频模式生成。
+推理结果目录与媒体文件不应提交到 Git。
+
 ## `data/`
 
 ### `data/h36m/`
@@ -142,7 +168,8 @@ work_dirs/strided_transformer_h36m_rtmpose_occconf_9frm/best_MPJPE_epoch_70.pth
 
 数据集、权重、训练输出与可视化结果通常不应提交到 Git；它们均为本地实验资产。
 项目代码和说明文件位于 `projects/single_image_pose_lift/`、
-`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、`tools/` 与本文档中。
+`projects/strided_transformer_pose_lift/`、`projects/pose_desktop/`、
+`projects/mmpose_visualization/`、`tools/` 与本文档中。
 
 ## 所有成员提交规则
 
@@ -153,6 +180,7 @@ work_dirs/strided_transformer_h36m_rtmpose_occconf_9frm/best_MPJPE_epoch_70.pth
 - `projects/single_image_pose_lift/`、`projects/strided_transformer_pose_lift/`
   中的源代码、训练配置、评估脚本和说明文档；
 - `projects/pose_desktop/` 中的批量 GUI、推理适配、渲染、输入输出处理和说明文档；
+- `projects/mmpose_visualization/` 中的关节角度脚本、依赖说明和 README；
 - `tools/` 中新增或修改的可复现数据转换、评估、渲染脚本；
 - 小型文本配置、Markdown 文档、依赖说明和 `.gitignore` 规则；
 - 不含模型参数、隐私内容或受限数据的测试代码。
